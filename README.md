@@ -1,3 +1,3 @@
-front: uvicorn main:app --reload
+back: uvicorn main:app --reload
 
-back: npm run dev
+front: npm run dev
