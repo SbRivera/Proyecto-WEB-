@@ -1,112 +1,137 @@
-from fastapi import APIRouter, HTTPException
-from models.aplicacion import Application, AplicacionUpdate
-from .database import get_db
-from psycopg2 import sql
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+from typing import List, Dict, Any
+from models.aplicacion import Aplicacion
+from models.sitio import Sitio
+from models.usuario import Usuario
+from schemas.aplicacion import AplicacionCreate, AplicacionUpdate
+from database import get_db
 import uuid
 from datetime import datetime
 
-
 router = APIRouter()
 
-@router.post("/aplicaciones")
-def create_application(application: Application):
-    grupo_id = str(uuid.uuid4())
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            for participant_id in application.participant_ids:
-                query = sql.SQL("""
-                    INSERT INTO aplicaciones (sitio_id, participante_id, contacto_emergencia, fecha_visita, tipo_visita, grupo_id, estado)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """)
-                cursor.execute(query, (
-                    application.sitio_id,
-                    participant_id,
-                    application.contacto_emergencia,
-                    application.fecha_visita,
-                    application.tipo_visita,
-                    grupo_id,
-                    None
-                ))
-            conn.commit()
+@router.post("/aplicaciones", response_model=Dict[str, Any])
+def create_aplicacion(aplicacion: AplicacionCreate, db: Session = Depends(get_db)):
+    grupo_id = uuid.UUID(str(uuid.uuid4()))
+    for participant_id in aplicacion.participant_ids:
+        db_aplicacion = Aplicacion(
+            sitio_id=aplicacion.sitio_id,
+            participante_id=participant_id,
+            contacto_emergencia=aplicacion.contacto_emergencia,
+            fecha_visita=aplicacion.fecha_visita,
+            tipo_visita=aplicacion.tipo_visita,
+            grupo_id=grupo_id,
+            estado=None
+        )
+        db.add(db_aplicacion)
+    db.commit()
     return {"message": "Solicitud enviada exitosamente", "grupo_id": grupo_id}
 
-@router.get("/aplicaciones")
-def get_applications():
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            query = """
-                SELECT 
-                    a.id, a.sitio_id, s.titulo as nombre_sitio, a.participante_id, 
-                    a.contacto_emergencia, a.fecha_visita, a.tipo_visita, 
-                    a.grupo_id, a.estado
-                FROM aplicaciones a
-                JOIN sitios s ON a.sitio_id = s.id
-                WHERE a.fecha_visita >= %s
-            """
-            cursor.execute(query, (datetime.now().strftime('%Y-%m-%d'),))
-            applications = cursor.fetchall()
-            
-            grouped_applications = {}
-            for app in applications:
-                grupo_id = app[7]
-                if grupo_id not in grouped_applications:
-                    grouped_applications[grupo_id] = {
-                        "id": app[0],
-                        "sitio_id": app[1],
-                        "nombre_sitio": app[2],
-                        "contacto_emergencia": app[4],
-                        "fecha_visita": app[5],
-                        "tipo_visita": app[6],
-                        "grupo_id": app[7],
-                        "estado": app[8],
-                        "participants": []
-                    }
-                grouped_applications[grupo_id]["participants"].append(app[3])
-                
-            return list(grouped_applications.values())
+@router.get("/aplicaciones", response_model=List[Dict[str, Any]])
+def read_aplicaciones(db: Session = Depends(get_db)):
+    aplicaciones = db.query(
+        Aplicacion.id,
+        Aplicacion.sitio_id,
+        Sitio.titulo.label('nombre_sitio'),
+        Aplicacion.participante_id,
+        Usuario.nombre_completo.label('nombre_participante'),
+        Aplicacion.contacto_emergencia,
+        Aplicacion.fecha_visita,
+        Aplicacion.tipo_visita,
+        Aplicacion.grupo_id,
+        Aplicacion.estado
+    ).join(Sitio).join(Usuario, Aplicacion.participante_id == Usuario.cedula_identidad).filter(Aplicacion.fecha_visita >= datetime.now()).all()
+
+    grouped_applications = {}
+    for app in aplicaciones:
+        grupo_id = app.grupo_id
+        if grupo_id not in grouped_applications:
+            grouped_applications[grupo_id] = {
+                "id": app.id,
+                "sitio_id": app.sitio_id,
+                "nombre_sitio": app.nombre_sitio,
+                "contacto_emergencia": app.contacto_emergencia,
+                "fecha_visita": app.fecha_visita,
+                "tipo_visita": app.tipo_visita,
+                "grupo_id": app.grupo_id,
+                "estado": app.estado,
+                "participants": []
+            }
+        grouped_applications[grupo_id]["participants"].append({
+            "cedula": app.participante_id,
+            "nombre": app.nombre_participante
+        })
+
+    return list(grouped_applications.values())
 
 @router.put("/aplicaciones/estado")
-def update_application_status(update: AplicacionUpdate):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            query = "UPDATE aplicaciones SET estado = %s WHERE grupo_id = %s"
-            cursor.execute(query, (update.estado, update.grupo_id))
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+def update_application_status(update: AplicacionUpdate, db: Session = Depends(get_db)):
+    aplicaciones = db.query(Aplicacion).filter(Aplicacion.grupo_id == update.grupo_id).all()
+    if not aplicaciones:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    for aplicacion in aplicaciones:
+        aplicacion.estado = update.estado
+    db.commit()
     return {"message": "Estado de la solicitud actualizado exitosamente"}
 
+@router.get("/aplicaciones/{nombre_usuario}", response_model=List[Dict[str, Any]])
+def get_user_applications(nombre_usuario: str, db: Session = Depends(get_db)):
+    user_cedula = db.query(Usuario.cedula_identidad).filter(Usuario.nombre_usuario == nombre_usuario).scalar()
+    if not user_cedula:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    aplicaciones_usuario  = db.query(
+        Aplicacion.id,
+        Aplicacion.sitio_id,
+        Sitio.titulo.label('nombre_sitio'),
+        Usuario.cedula_identidad.label('cedula'),
+        Usuario.nombre_completo.label('nombre'),
+        Aplicacion.contacto_emergencia,
+        Aplicacion.fecha_visita,
+        Aplicacion.tipo_visita,
+        Aplicacion.grupo_id,
+        Aplicacion.estado
+    ).join(Sitio).join(Usuario).filter(Aplicacion.participante_id == user_cedula).all()
 
-@router.get("/aplicaciones/{nombre_usuario}")
-def get_user_applications(nombre_usuario: str):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            query = """
-                SELECT 
-                    a.id, a.sitio_id, s.titulo as nombre_sitio, a.participante_id, 
-                    a.contacto_emergencia, a.fecha_visita, a.tipo_visita, 
-                    a.grupo_id, a.estado
-                FROM aplicaciones a
-                JOIN sitios s ON a.sitio_id = s.id
-                WHERE a.participante_id = (
-                    SELECT cedula_identidad FROM usuarios WHERE nombre_usuario = %s
-                )
-            """
-            cursor.execute(query, (nombre_usuario,))
-            applications = cursor.fetchall()
-            
-            user_applications = []
-            for app in applications:
-                user_applications.append({
-                    "id": app[0],
-                    "sitio_id": app[1],
-                    "nombre_sitio": app[2],
-                    "participante_id": app[3],
-                    "contacto_emergencia": app[4],
-                    "fecha_visita": app[5],
-                    "tipo_visita": app[6],
-                    "grupo_id": app[7],
-                    "estado": app[8] if app[8] is not None else "pendiente"
-                })
-                
-            return user_applications
+    grupo_ids = [app.grupo_id for app in aplicaciones_usuario]
+
+    if grupo_ids:
+        aplicaciones_grupo = db.query(
+            Aplicacion.id,
+            Aplicacion.sitio_id,
+            Sitio.titulo.label('nombre_sitio'),
+            Usuario.cedula_identidad.label('cedula'),
+            Usuario.nombre_completo.label('nombre'),
+            Aplicacion.contacto_emergencia,
+            Aplicacion.fecha_visita,
+            Aplicacion.tipo_visita,
+            Aplicacion.grupo_id,
+            Aplicacion.estado
+        ).join(Sitio).join(Usuario).filter(Aplicacion.grupo_id.in_(grupo_ids)).all()
+    else:
+        aplicaciones_grupo = []
+
+    todas_aplicaciones = aplicaciones_usuario + aplicaciones_grupo
+
+    grouped_applications = {}
+    for app in todas_aplicaciones:
+        grupo_id = app.grupo_id
+        if grupo_id not in grouped_applications:
+            grouped_applications[grupo_id] = {
+                "id": app.id,
+                "sitio_id": app.sitio_id,
+                "nombre_sitio": app.nombre_sitio,
+                "contacto_emergencia": app.contacto_emergencia,
+                "fecha_visita": app.fecha_visita,
+                "tipo_visita": app.tipo_visita,
+                "grupo_id": app.grupo_id,
+                "estado": app.estado,
+                "participants": []
+            }
+        grouped_applications[grupo_id]["participants"].append({
+            "cedula": app.cedula,
+            "nombre": app.nombre
+        })
+
+    return list(grouped_applications.values())

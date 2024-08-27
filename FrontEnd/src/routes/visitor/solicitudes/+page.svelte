@@ -3,11 +3,16 @@
     import { onMount } from 'svelte';
     import { usuario } from '$lib/stores';
 
+    interface Participant {
+        cedula: string;
+        nombre: string;
+    }
+
     interface Application {
         id: string;
         sitio_id: number;
         nombre_sitio: string;
-        participante_id: string;
+        participants: Participant[];
         contacto_emergencia: string;
         fecha_visita: string;
         tipo_visita: string;
@@ -30,6 +35,8 @@
         try {
             const response = await axios.get(`http://localhost:8000/aplicaciones/${localUsername}`);
             applications = response.data;
+            applications.reverse();
+
         } catch (error) {
             console.error('Error fetching user applications:', error);
         }
@@ -45,7 +52,12 @@
                 <p><strong>Contacto de emergencia:</strong> {app.contacto_emergencia}</p>
                 <p><strong>Fecha de visita:</strong> {app.fecha_visita}</p>
                 <p><strong>Tipo de visita:</strong> {app.tipo_visita}</p>
-                <p><strong>Participante ID:</strong> {app.participante_id}</p>
+                <p><strong>Participantes:</strong></p>
+                <ul>
+                    {#each app.participants as participant}
+                        <li>{participant.cedula} - {participant.nombre}</li>
+                    {/each}
+                </ul>
                 <p><strong>Estado:</strong> {app.estado}</p>
             </div>
         {/each}

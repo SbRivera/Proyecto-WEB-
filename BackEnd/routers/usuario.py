@@ -1,133 +1,107 @@
-from fastapi import APIRouter, HTTPException
-from models.usuario import UserRegister, UserLogin, UserUpdate, CheckUniqueRequest
-from .database import get_db
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+from models.usuario import Usuario
+from schemas.usuario import CheckUniqueRequest, UserRegister, UserLogin, UserUpdate, UsuarioPublico
+from database import get_db
 import bcrypt
-from psycopg2 import sql
 
 router = APIRouter()
 
 @router.post("/check_unique")
-def check_unique(data: CheckUniqueRequest):
+def check_unique(data: CheckUniqueRequest, db: Session = Depends(get_db)):
     query_map = {
-        'nombre_usuario': "SELECT COUNT(*) FROM usuarios WHERE nombre_usuario = %s",
-        'cedula_identidad': "SELECT COUNT(*) FROM usuarios WHERE cedula_identidad = %s",
+        'nombre_usuario': Usuario.nombre_usuario,
+        'cedula_identidad': Usuario.cedula_identidad,
     }
 
     if data.field not in query_map:
         raise HTTPException(status_code=400, detail="Campo inválido")
 
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(query_map[data.field], (data.value,))
-            count = cursor.fetchone()[0]
-            return {"unique": count == 0}
+    exists = db.query(Usuario).filter(query_map[data.field] == data.value).first() is not None
+    return {"unique": not exists}
 
 @router.post("/register")
-def register(usuario: UserRegister):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM usuarios WHERE nombre_usuario = %s OR cedula_identidad = %s", (usuario.nombre_usuario, usuario.cedula_identidad))
-            if cursor.fetchone()[0] > 0:
-                raise HTTPException(status_code=400, detail="Nombre de usuario o cédula de identidad ya están en uso")
-
-            hashed_password = bcrypt.hashpw(usuario.contrasena.encode('utf-8'), bcrypt.gensalt())
-            query = sql.SQL("""
-                INSERT INTO usuarios (nombre_completo, nombre_usuario, contrasena, nivel_acceso, correo_electronico, cedula_identidad, fecha_nacimiento, contacto, nacionalidad, discapacidades)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """)
-            cursor.execute(query, (
-                usuario.nombre_completo,
-                usuario.nombre_usuario,
-                hashed_password.decode('utf-8'),
-                'visitante', 
-                usuario.correo_electronico,
-                usuario.cedula_identidad,
-                usuario.fecha_nacimiento,
-                usuario.contacto,
-                usuario.nacionalidad,
-                usuario.discapacidades
-            ))
-            conn.commit()
+def register(usuario: UserRegister, db: Session = Depends(get_db)):
+    # Verificar si el nombre de usuario o la cédula ya existen
+    existing_user = db.query(Usuario).filter(
+        (Usuario.nombre_usuario == usuario.nombre_usuario) | 
+        (Usuario.cedula_identidad == usuario.cedula_identidad)
+    ).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Nombre de usuario o cédula de identidad ya están en uso")
+    
+    # Hash de la contraseña
+    hashed_password = bcrypt.hashpw(usuario.contrasena.encode('utf-8'), bcrypt.gensalt())
+    
+    # Crear el nuevo usuario
+    db_usuario = Usuario(
+        nombre_completo=usuario.nombre_completo,
+        nombre_usuario=usuario.nombre_usuario,
+        contrasena=hashed_password.decode('utf-8'),
+        nivel_acceso='visitante',
+        correo_electronico=usuario.correo_electronico,
+        cedula_identidad=usuario.cedula_identidad,
+        fecha_nacimiento=usuario.fecha_nacimiento,
+        contacto=usuario.contacto,
+        nacionalidad=usuario.nacionalidad,
+        discapacidades=usuario.discapacidades
+    )
+    db.add(db_usuario)
+    db.commit()
+    db.refresh(db_usuario)
     return {"message": "Usuario registrado exitosamente"}
 
 @router.post("/login")
-def login(user: UserLogin):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            query = sql.SQL("SELECT contrasena, nivel_acceso FROM usuarios WHERE nombre_usuario = %s")
-            cursor.execute(query, (user.nombre_usuario,))
-            result = cursor.fetchone()
-            if result is None or not bcrypt.checkpw(user.contrasena.encode('utf-8'), result[0].encode('utf-8')):
-                raise HTTPException(status_code=401, detail="Invalid username or password")
-            return {"message": "Login successful", "role": result[1]}
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    db_user = db.query(Usuario).filter(Usuario.nombre_usuario == user.nombre_usuario).first()
+    if not db_user or not bcrypt.checkpw(user.contrasena.encode('utf-8'), db_user.contrasena.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Usuario o contraseña inválidos")
+    return {"message": "Login successful", "role": db_user.nivel_acceso}
 
 @router.get("/info/{nombre_usuario}")
-def get_user_basic_info(nombre_usuario: str):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT nombre_completo, cedula_identidad FROM usuarios WHERE nombre_usuario = %s", (nombre_usuario,))
-            user_data = cursor.fetchone()
-            if user_data:
-                return {"full_name": user_data[0], "identity_card": user_data[1]}
-            raise HTTPException(status_code=404, detail="User not found")
+def get_user_basic_info(nombre_usuario: str, db: Session = Depends(get_db)):
+    user = db.query(Usuario).filter(Usuario.nombre_usuario == nombre_usuario).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {"full_name": user.nombre_completo, "identity_card": user.cedula_identidad}
 
 @router.get("/cedula/{cedula_identidad}")
-def get_user_by_identity_card(cedula_identidad: str):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT nombre_completo, cedula_identidad FROM usuarios WHERE cedula_identidad = %s", (cedula_identidad,))
-            user_data = cursor.fetchone()
-            if user_data:
-                return {"full_name": user_data[0], "identity_card": user_data[1]}
-            raise HTTPException(status_code=404, detail="User not found")
+def get_user_by_identity_card(cedula_identidad: str, db: Session = Depends(get_db)):
+    user = db.query(Usuario).filter(Usuario.cedula_identidad == cedula_identidad).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {"full_name": user.nombre_completo, "identity_card": user.cedula_identidad}
 
-@router.get("/usuario/{nombre_usuario}")
-def get_usuario(nombre_usuario: str):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT nombre_usuario, correo_electronico, contacto, discapacidades FROM usuarios WHERE nombre_usuario = %s", (nombre_usuario,))
-            usuario_data = cursor.fetchone()
-            if usuario_data:
-                return {"nombre_usuario": usuario_data[0], "correo_electronico": usuario_data[1], "contacto": usuario_data[2], "discapacidades": usuario_data[3]}
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+@router.get("/usuario/{nombre_usuario}", response_model=UsuarioPublico)
+def get_usuario(nombre_usuario: str, db: Session = Depends(get_db)):
+    usuario = db.query(Usuario).filter(Usuario.nombre_usuario == nombre_usuario).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return UsuarioPublico.from_orm(usuario)
 
 @router.put("/usuario/{nombre_usuario}")
-def update_usuario(nombre_usuario: str, usuario: UserUpdate):
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            if usuario.nombre_usuario and usuario.nombre_usuario != nombre_usuario:
-                cursor.execute("SELECT COUNT(*) FROM usuarios WHERE nombre_usuario = %s", (usuario.nombre_usuario,))
-                if cursor.fetchone()[0] > 0:
-                    raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+def update_usuario(nombre_usuario: str, usuario: UserUpdate, db: Session = Depends(get_db)):
+    db_usuario = db.query(Usuario).filter(Usuario.nombre_usuario == nombre_usuario).first()
+    if not db_usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-            update_fields = []
-            update_values = []
-            if usuario.correo_electronico:
-                update_fields.append("correo_electronico = %s")
-                update_values.append(usuario.correo_electronico)
-            if usuario.contacto:
-                update_fields.append("contacto = %s")
-                update_values.append(usuario.contacto)
-            if usuario.discapacidades:
-                update_fields.append("discapacidades = %s")
-                update_values.append(usuario.discapacidades)
-            if usuario.nombre_usuario:
-                update_fields.append("nombre_usuario = %s")
-                update_values.append(usuario.nombre_usuario)
-            if usuario.contrasena:
-                hashed_password = bcrypt.hashpw(usuario.contrasena.encode('utf-8'), bcrypt.gensalt())
-                update_fields.append("contrasena = %s")
-                update_values.append(hashed_password.decode('utf-8'))
+    if usuario.nombre_usuario and usuario.nombre_usuario != nombre_usuario:
+        existing_user = db.query(Usuario).filter(Usuario.nombre_usuario == usuario.nombre_usuario).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+        db_usuario.nombre_usuario = usuario.nombre_usuario
 
-            if update_fields:
-                update_values.append(nombre_usuario)
-                query = f"UPDATE usuarios SET {', '.join(update_fields)} WHERE nombre_usuario = %s"
-                cursor.execute(query, tuple(update_values))
-                conn.commit()
-                
-                if usuario.nombre_usuario:
-                    return {"message": "Usuario actualizado exitosamente", "nuevo_nombre_usuario": usuario.nombre_usuario}
+    if usuario.correo_electronico:
+        db_usuario.correo_electronico = usuario.correo_electronico
+    if usuario.contacto:
+        db_usuario.contacto = usuario.contacto
+    if usuario.discapacidades:
+        db_usuario.discapacidades = usuario.discapacidades
+    if usuario.contrasena:
+        hashed_password = bcrypt.hashpw(usuario.contrasena.encode('utf-8'), bcrypt.gensalt())
+        db_usuario.contrasena = hashed_password.decode('utf-8')
 
-    return {"message": "Usuario actualizado exitosamente"}
+    db.commit()
+    db.refresh(db_usuario)
 
-
+    return {"message": "Usuario actualizado exitosamente", "nuevo_nombre_usuario": db_usuario.nombre_usuario if usuario.nombre_usuario else None}

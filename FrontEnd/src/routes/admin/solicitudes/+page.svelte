@@ -2,11 +2,16 @@
     import axios from 'axios';
     import { onMount } from 'svelte';
   
+    interface Participant {
+      cedula: string;
+      nombre: string;
+    }
+
     interface Application {
       id: string;
       sitio_id: number;
       nombre_sitio: string;
-      participants: string[];
+      participants: Participant[];
       contacto_emergencia: string;
       fecha_visita: string;
       tipo_visita: string;
@@ -21,17 +26,28 @@
     onMount(async () => {
       await fetchApplications();
     });
-  
+
     async function fetchApplications() {
       try {
         const response = await axios.get('http://localhost:8000/aplicaciones');
         console.log('Fetched applications:', response.data);
-        applications = response.data;
-        filteredApplications = applications; 
+        
+        applications = response.data.map((app: any) => ({
+          ...app,
+          participants: app.participants.map((participant: any) => ({
+            cedula: participant.cedula,
+            nombre: participant.nombre
+          }))
+        }));
+        
+        applications.reverse();
+
+        filteredApplications = applications;
       } catch (error) {
         console.error('Error fetching applications:', error);
       }
     }
+
   
     function filterApplications() {
       if (selectedDate) {
@@ -76,12 +92,12 @@
           <p>Participantes:</p>
           <ul>
             {#each app.participants as participant}
-              <li>{participant}</li>
+              <li>{participant.cedula} - {participant.nombre}</li>
             {/each}
           </ul>
           {#if !app.estado}
-            <button on:click={() => updateStatus(app.grupo_id, 'accepted')}>Aceptar</button>
-            <button on:click={() => updateStatus(app.grupo_id, 'rejected')}>Rechazar</button>
+            <button on:click={() => updateStatus(app.grupo_id, 'Aceptado')}>Aceptar</button>
+            <button on:click={() => updateStatus(app.grupo_id, 'Rechazado')}>Rechazar</button>
           {:else}
             <p>Estado: {app.estado}</p>
           {/if}
