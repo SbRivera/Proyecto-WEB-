@@ -50,14 +50,14 @@
 
   function setImagenSitio(id: string) {
     const imagenes: { [key: string]: string } = {
-      '1': '/path/to/imagen1.jpg',
-      '2': '/path/to/imagen2.jpg',
-      '3': '/path/to/imagen3.jpg',
-      '4': '/path/to/imagen4.jpg',
-      '5': '/path/to/imagen5.jpg',
-      '6': '/path/to/imagen6.jpg',
+      '1': '/illinizas/img1.jpg',
+      '2': '/illinizas/img2.jpg',
+      '3': '/illinizas/img3.jpg',
+      '4': '/illinizas/img4.jpg',
+      '5': '/illinizas/img5.jpg',
+      '6': '/illinizas/img6.jpg',
     };
-    imagenSitio = imagenes[id] || '/path/to/default.jpg';
+    imagenSitio = imagenes[id] || '/illinizas/ilinisas.png';
   }
 
   function aplicar() {

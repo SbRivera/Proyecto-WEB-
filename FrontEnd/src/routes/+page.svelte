@@ -11,12 +11,12 @@
   }
 
   let sitios: Sitio[] = [
-    { id: 1, imagen: '/path/to/imagen1.jpg', descripcion: '', activo: false },
-    { id: 2, imagen: '/path/to/imagen2.jpg', descripcion: '', activo: false },
-    { id: 3, imagen: '/path/to/imagen3.jpg', descripcion: '', activo: false },
-    { id: 4, imagen: '/path/to/imagen4.jpg', descripcion: '', activo: false },
-    { id: 5, imagen: '/path/to/imagen5.jpg', descripcion: '', activo: false },
-    { id: 6, imagen: '/path/to/imagen6.jpg', descripcion: '', activo: false },
+    { id: 1, imagen: '/illinizas/img1.jpg', descripcion: '', activo: false },
+    { id: 2, imagen: '/illinizas/img2.jpg', descripcion: '', activo: false },
+    { id: 3, imagen: '/illinizas/img3.jpg', descripcion: '', activo: false },
+    { id: 4, imagen: '/illinizas/img4.jpg', descripcion: '', activo: false },
+    { id: 5, imagen: '/illinizas/img5.jpg', descripcion: '', activo: false },
+    { id: 6, imagen: '/illinizas/img6.jpg', descripcion: '', activo: false },
   ];
 
   onMount(async () => {

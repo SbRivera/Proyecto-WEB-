@@ -52,7 +52,6 @@
     margin-left: auto;
   }
   @media (max-width: 768px) {
-    
     .botones button {
       padding: 0.5rem;
     }
@@ -61,9 +60,9 @@
   
 <header>
   <div class="logo">
-		<a href="/">
-      <img src="../lib/illinizas/ilinisas.png" alt="Logo">
-		</a>
+    <a href="/">
+      <img src="/illinizas/ilinisas.png" alt="Logo">
+    </a>
   </div>
   <div class="centro">
     <h1>RESERVA ECOLOGICA LOS ILINIZAS</h1>
