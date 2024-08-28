@@ -80,7 +80,7 @@
     <label for="filterDate">Filtrar por fecha:</label>
     <input type="date" id="filterDate" bind:value={selectedDate} />
     <button on:click={filterApplications}>Filtrar</button>
-    <button on:click={resetFilter}>Desfiltrar</button>
+    <button class="reset-filter" on:click={resetFilter}>Desfiltrar</button>
   
     <div>
       {#each filteredApplications as app (app.id)}
@@ -97,7 +97,7 @@
           </ul>
           {#if !app.estado}
             <button on:click={() => updateStatus(app.grupo_id, 'Aceptado')}>Aceptar</button>
-            <button on:click={() => updateStatus(app.grupo_id, 'Rechazado')}>Rechazar</button>
+            <button class="reset-filter" on:click={() => updateStatus(app.grupo_id, 'Rechazado')}>Rechazar</button>
           {:else}
             <p>Estado: {app.estado}</p>
           {/if}
@@ -112,8 +112,92 @@
       padding: 1rem;
       margin: 1rem 0;
     }
-    button {
-      margin-right: 1rem;
+    main {
+    max-width: 800px;
+    margin: auto;
+    padding: 1rem;
+    background-color: #f9f9f9;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
+    h1 {
+      font-size: 2rem;
+      color: #2c3e50;
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+      color: #34495e;
+    }
+    input[type="text"], input[type="date"] {
+      width: calc(100% - 1rem);
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    button {
+      display: block;
+      width: 100%;
+      padding: 0.75rem;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+      margin-bottom: 1rem;
+    }
+    li {
+      margin-bottom: 0.75rem;
+      padding: 0.75rem;
+      background-color: #ecf0f1;
+      border: 1px solid #bdc3c7;
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    li button {
+      background-color: #e74c3c;
+      margin-left: 1rem;
+    }
+    li button:hover {
+      background-color: #c0392b;
+    }
+    .error {
+      color: red;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+    div {
+      margin-bottom: 1rem;
+    }
+    h3 {
+      color: #2c3e50;
+      margin-bottom: 0.5rem;
+    }
+    .reset-filter {
+      background-color: #e74c3c; 
+      color: white;
+    }
+
+    .reset-filter:hover {
+      background-color: #c0392b; 
+    }
+
   </style>
   
